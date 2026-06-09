@@ -9,11 +9,11 @@ void setup() {
 
   Serial.begin(115200); // USB para debug no PC
 
-  PixhawkSerial.begin(
-    57600,
-    SERIAL_8N1,
-    RXD2,
-    TXD2
+  PixhawkSerial.begin(  // Inicia a comunicação serial PixhawkSerial
+    57600,              // velocidade de comunicação (baudrate) configurada no parâmetro SERIAL2_BAUD da Pixhawk
+    SERIAL_8N1,         // formato dos dados seriais
+    RXD2,               // pino RX
+    TXD2                // Pino TX
   );
 
   Serial.println("ESP32 pronto. Aguardando comando da Pixhawk...");
