@@ -14,6 +14,26 @@ int en = 25;
 int freq = 1000;
 int resolution = 8;
 
+const byte START_BYTE = 0xAA;
+
+enum EstadoDados{
+  ESPERANDO_START,
+  LENDO_HABILITADO,
+  LENDO_VELOCIDADE,
+  LENDO_DIRECAO,
+  LENDO_CHECKSUM
+};
+
+EstadoDados estado = ESPERANDO_START;
+
+byte habilitado = 0;
+byte velocidade = 0;
+byte direcao = 1;
+byte checksum_recebido = 0;
+
+unsigned long ultimoPacoteValido = 0;
+const unsigned long TIMEOUT_COMUNICACAO = 500;
+
 void setup() {
 
   pinMode(LED_PIN, OUTPUT);
@@ -35,41 +55,122 @@ void setup() {
 
 void loop() {
   
-  if (PixhawkSerial.available()){
-    char c = PixhawkSerial.read();
+  receberPacote();
 
-    Serial.print("Recebido: ");
-    Serial.println(c);
-
-    if (c == 'A') {
-      frente();
-      digitalWrite(LED_PIN, HIGH);
-    }
-
-    else if (c == 'C') {
-      parar();
-      digitalWrite(LED_PIN, LOW);
-    }
+  if (millis() - ultimoPacoteValido > TIMEOUT_COMUNICACAO) {
+    parar();
+    digitalWrite(LED_PIN, LOW);
   }
 
 }
 
-void parar(){
-  ledcWrite(en, 0);
-  digitalWrite(in2, LOW);
-  digitalWrite(in1, LOW);
+void receberPacote() {
+  while (PixhawkSerial.available()) {
+    byte b = PixhawkSerial.read();
+
+    switch (estado) {
+
+      case ESPERANDO_START:
+        if (b == START_BYTE) {
+          estado = LENDO_HABILITADO;
+        }
+        break;
+
+      case LENDO_HABILITADO:
+        habilitado = b;
+        estado = LENDO_VELOCIDADE;
+        break;
+
+      case LENDO_VELOCIDADE:
+        velocidade = b;
+        estado = LENDO_DIRECAO;
+        break;
+
+      case LENDO_DIRECAO:
+        direcao = b;
+        estado = LENDO_CHECKSUM;
+        break;
+
+      case LENDO_CHECKSUM:
+        checksum_recebido = b;
+
+        byte checksum_calculado;
+        checksum_calculado = (habilitado + velocidade + direcao ) % 256;
+
+        if (checksum_recebido == checksum_calculado) {
+          ultimoPacoteValido = millis();
+          executarComando();
+        } else {
+          Serial.println("Pacote corrompido");
+        }
+
+        estado = ESPERANDO_START;
+        break;
+    }
+  }
 }
 
-void frente(){
-  ledcWrite(en, 250);
+void executarComando() {
+  Serial.print("Habilitado: ");
+  Serial.print(habilitado);
+
+  Serial.print(" | Velocidade: ");
+  Serial.print(velocidade);
+
+  Serial.print(" | Direcao: ");
+  Serial.println(direcao);
+
+  if (habilitado == 0) {
+    parar();
+    return;
+  }
+
+  int pwmBase = 0;
+
+  if (velocidade == 0) {
+    pwmBase = 0;
+  }
+  else if (velocidade == 1){
+    pwmBase = 90;
+  } 
+  else if (velocidade == 2) {
+    pwmBase = 180;
+  } 
+  else if (velocidade == 3) {
+    pwmBase = 250;
+  } 
+  else {
+    pwmBase = 0;
+  }
+
+  if (direcao == 0) {
+    frente(pwmBase);
+  } 
+  else if (direcao == 2) {
+    tras(pwmBase);
+  }
+  else{
+    frente(pwmBase);
+  }
+}
+
+
+void frente(int pwmBase){
+  ledcWrite(en, pwmBase);
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
 }
 
-void tras(){
-  ledcWrite(en, 250);
+void tras(int pwmBase){
+  ledcWrite(en, pwmBase);
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
+}
+
+void parar(){
+  ledcWrite(en, 0);
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, LOW);
 }
 
 
